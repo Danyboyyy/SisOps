@@ -36,6 +36,8 @@ try:
     # Receive the data 
 	while True:   
 		data = connection.recv(256)
+		msg = data.decode('utf-8')
+		print ( msg )
 		print ( 'server received "%s"' % data.decode('utf-8')) # data bytes back to str
 		if data:
 			print ( 'sending answer back to the client')
