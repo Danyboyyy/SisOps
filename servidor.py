@@ -19,6 +19,7 @@ class Entrada:
 		self.mutex = threading.Semaphore(1)
 		self.id = id
 		self.requestQueue = queue.Queue(100)
+		self.estado = 
 
 	def serveRequests(self):
 		while True:
@@ -35,11 +36,9 @@ class Entrada:
 				self.laserOnE(timestamp)
 			elif tokens[1] == 'laserOffE':
 				self.laserOffE(timestamp)
-			self.requestQueue.task_done
+			self.requestQueue.task_done()
 
 	def oprimeBoton(self, timestamp): #Indica que hay un auto queriendo ocupar un lugar en el estacionamiento
-		semEspacios.acquire()
-		self.mutex.acquire()
 		outTable.append([
 			timestamp,
 			"oprimeBoton " + self.id,
@@ -47,22 +46,38 @@ class Entrada:
 			"",
 			""
 		])
-		outTable.append([
-			timestamp,
-			"",
-			"Se comienza a imprimir tarjeta por E" + self.id,
-			"",
-			""
-		])
-		time.sleep(5)
-		outTable.append([
-			timestamp + 5,
-			"",
-			"Se imprimió tarjeta. Hora " + datetime.datetime.now().strftime("%X") + " E" + self.id,
-			"",
-			""
-		])
 		
+		semEspacios.acquire()
+		self.mutex.acquire()
+
+		if countDisponibles > 0:
+			outTable.append([
+				timestamp,
+				"",
+				"Se comienza a imprimir tarjeta por E" + self.id,
+				"",
+				""
+			])
+			time.sleep(5)
+			outTable.append([
+				timestamp + 5,
+				"",
+				"Se imprimió tarjeta. Hora " + datetime.datetime.now().strftime("%X") + " E" + self.id,
+				"",
+				""
+			])
+		else:
+			outTable.append([
+				timestamp,
+				"",
+				"No hay cupo.",
+				"",
+				""
+			])
+			
+			self.mutex.release()
+			semEspacios.release()
+
 	def recogeTarjeta(self, timestamp):
 		outTable.append([
 			timestamp,
@@ -153,15 +168,15 @@ class Salida:
 			tokens = msg.split()
 			timestamp = float(tokens[0])
 			if tokens[1] == 'meteTarjeta':
-				if tokens[2] is not None:
-					self.meteTarjeta(timestamp, int(tokens[2]), float(tokens[3]))
+				if tokens[3] == '1':
+					self.meteTarjeta(timestamp, int(tokens[3]), float(tokens[4]))
 				else:
 					self.meteTarjeta(timestamp)
 			elif tokens[1] == 'laserOnS':
 				self.laserOnS(timestamp)
 			elif tokens[1] == 'laserOffS':
 				self.laserOffS(timestamp)
-			self.requestQueue.task_done
+			self.requestQueue.task_done()
 
 	def meteTarjeta(self, timestamp, pago = None, timestampPago = None):
 		# checar que haya pagado para hacer el acquire
@@ -173,7 +188,7 @@ class Salida:
 				"",
 				""
 			])
-			if (timestampPago + 15 < timestamp):
+			if (timestamp - timestampPago < 15):
 				semOcupados.acquire()
 				self.mutex.acquire()
 
@@ -203,6 +218,13 @@ class Salida:
 					""
 				])
 		else:
+			outTable.append([
+				timestamp,
+				"meteTarjeta " + self.id,
+				"",
+				"",
+				""
+			])
 			outTable.append([
 					timestamp,
 					"",
@@ -288,7 +310,7 @@ class Estacionamiento:
 		semOcupados = threading.Semaphore(0) # Inicializado en 0, consumidor
 
 	def serveRequests(self, msg):
-		tokens = msg.split(' ')
+		tokens = msg.split()
 		if (tokens[1] == 'oprimeBoton' or tokens[1] == 'recogeTarjeta' or tokens[1] == 'laserOnE' or tokens[1] == 'laserOffE'):
 			#validar tokens
 			self.entradas[int(tokens[2]) - 1].requestQueue.put(msg)
@@ -359,7 +381,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Bind the socket to the port
 server_address = ('localhost', 10000)
-print ( 'starting up on %s port %s' % server_address)
+print ( 'Starting up on %s port %s' % server_address)
 sock.bind(server_address)
 
 #Calling listen() puts the socket into server mode, and accept() waits for an incoming connection.
@@ -368,7 +390,7 @@ sock.bind(server_address)
 sock.listen(1)
 
 # Wait for a connection
-print ( 'waiting for a connection')
+print ( 'Waiting for a connection...')
 connection, client_address = sock.accept()
 
 #accept() returns an open connection between the server and client, along with the address of the client. The connection is actually a different socket on another port (assigned by the kernel). Data is read from the connection with recv() and transmitted with sendall().
@@ -377,7 +399,7 @@ global outTable
 outTable = [['Timestamp', 'Comando', 'Mensaje del Servidor', 'Libres', 'Ocupados']]
 
 try:
-	print ( 'connection from', client_address)
+	print ( 'Connection from', client_address)
 	while (True):
     # Receive the data 
 		data = connection.recv(256)
@@ -391,12 +413,13 @@ try:
 		 # data bytes back to str
 		
 		if data:
-			# connection.sendall(b'va de regreso...' + data) # b converts str to bytes
+			connection.sendall(b'va de regreso...' + data) # b converts str to bytes
 			pass
 		else:
 			print ( 'no data from', client_address)
 			connection.close()
 			sys.exit()
+
 			
 finally:
   # Clean up the connection
