@@ -6,19 +6,21 @@
 
 #This sample program, based on the one in the standard library documentation, receives incoming messages and echos them back to the sender. It starts by creating a TCP/IP socket.
 
+# TO-DO
+# lanzar exceptions
+# Documentar código
+# Validar tokens
+# Validar numero de entrada y salida valida
+# Checar que no pueden salir carros inexistentes
+# Opcional (Code splitting)
+
 import socket
 import sys
 import time
 import threading
 import datetime
 import queue
-from tabulate import tabulate #pip install tabulate
-
-global semEspacios
-global countLibres
-global countOcupados
-
-semEspacios = threading.Semaphore(1)
+from tabulate import tabulate
 
 class Entrada:
 	def __init__(self, id):
@@ -333,6 +335,11 @@ class Salida:
 
 class Estacionamiento:
 	def __init__(self, timestamp, numEspacios, numEntradas, numSalidas):
+		global semEspacios
+		global countLibres
+		global countOcupados
+
+		semEspacios = threading.Semaphore(1)
 
 		semEspacios.acquire()
 
@@ -378,8 +385,6 @@ class Estacionamiento:
 
 		print ( tabulate(outTable) )
 
-		numEntradas = len(self.entradas)
-		numSalidas = len(self.salidas)
 		for e in self.entradas:
 			e.requestQueue.join()
 			e.requestQueue.put(None)
