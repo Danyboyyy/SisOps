@@ -14,12 +14,17 @@ import datetime
 import queue
 from tabulate import tabulate #pip install tabulate
 
+global semEspacios
+global countLibres
+global countOcupados
+
+semEspacios = threading.Semaphore(1)
+
 class Entrada:
 	def __init__(self, id):
-		self.mutex = threading.Semaphore(1)
 		self.id = id
 		self.requestQueue = queue.Queue(100)
-		self.estado = 
+		self.estado = "inicio"
 
 	def serveRequests(self):
 		while True:
@@ -39,22 +44,64 @@ class Entrada:
 			self.requestQueue.task_done()
 
 	def oprimeBoton(self, timestamp): #Indica que hay un auto queriendo ocupar un lugar en el estacionamiento
-		outTable.append([
-			timestamp,
-			"oprimeBoton " + self.id,
-			"",
-			"",
-			""
-		])
-		
-		semEspacios.acquire()
-		self.mutex.acquire()
+		if self.estado == "inicio":
+			outTable.append([
+				timestamp,
+				"oprimeBoton " + self.id,
+				"",
+				"",
+				""
+			])
 
-		if countDisponibles > 0:
+			semEspacios.acquire()
+
+			if countLibres > 0:
+				outTable.append([
+					timestamp,
+					"",
+					"Se comienza a imprimir tarjeta por E" + self.id,
+					"",
+					""
+				])
+
+				semEspacios.release()
+
+				time.sleep(5)
+				outTable.append([
+					timestamp + 5,
+					"",
+					"Se imprimió tarjeta. Hora " + datetime.datetime.now().strftime("%X") + " E" + self.id,
+					"",
+					""
+				])
+				self.estado = "oprimido"
+			else:
+				semEspacios.release()
+
+				outTable.append([
+					timestamp,
+					"",
+					"No hay cupo.",
+					"",
+					""
+				])
+				self.estado = "inicio"
+		else:
+			print("Llamada a oprimeBoton antes de inicializar Entrada", self.id)
+
+	def recogeTarjeta(self, timestamp):
+		if (self.estado == "oprimido"):
+			outTable.append([
+				timestamp,
+				"recogeTarjeta " + self.id,
+				"",
+				"",
+				""
+			])
 			outTable.append([
 				timestamp,
 				"",
-				"Se comienza a imprimir tarjeta por E" + self.id,
+				"Se empieza a levantar la barrera de E" + self.id,
 				"",
 				""
 			])
@@ -62,111 +109,91 @@ class Entrada:
 			outTable.append([
 				timestamp + 5,
 				"",
-				"Se imprimió tarjeta. Hora " + datetime.datetime.now().strftime("%X") + " E" + self.id,
+				"Se levantó la barrera de E" + self.id,
 				"",
 				""
 			])
+			self.estado = "recogido"
 		else:
+			print("Llamada a recogeTarjeta antes de oprimir boton en Entrada", self.id)
+
+	def laserOffE(self, timestamp): #El auto pasa por la entrada
+		if self.estado == 'recogido':
+			outTable.append([
+				timestamp,
+				"laserOffE " + self.id,
+				"",
+				"",
+				""
+			])
 			outTable.append([
 				timestamp,
 				"",
-				"No hay cupo.",
+				"El auto comienza a pasar por E" + self.id,
 				"",
 				""
 			])
-			
-			self.mutex.release()
-			semEspacios.release()
-
-	def recogeTarjeta(self, timestamp):
-		outTable.append([
-			timestamp,
-			"recogeTarjeta " + self.id,
-			"",
-			"",
-			""
-		])
-		outTable.append([
-			timestamp,
-			"",
-			"Se empieza a levantar la barrera de E" + self.id,
-			"",
-			""
-		])
-		time.sleep(5)
-		outTable.append([
-			timestamp + 5,
-			"",
-			"Se levantó la barrera de E" + self.id,
-			"",
-			""
-		])
-
-	def laserOffE(self, timestamp): #El auto pasa por la entrada
-		outTable.append([
-			timestamp,
-			"laserOffE " + self.id,
-			"",
-			"",
-			""
-		])
-		outTable.append([
-			timestamp,
-			"",
-			"El auto comienza a pasar por E" + self.id,
-			"",
-			""
-		])
+			self.estado = 'apagado'
+		else:
+			print("Llamada a laserOffE antes de recogeTarjeta en Entrada", self.id)
 
 	def laserOnE(self, timestamp): #El auto termina de pasar por la entrada y toma un lugar
-		global countLibres
-		global countOcupados
+		if self.estado == 'apagado':
+			outTable.append([
+				timestamp,
+				"laserOnE " + self.id,
+				"",
+				"",
+				""
+			])
 
-		outTable.append([
-			timestamp,
-			"laserOnE " + self.id,
-			"",
-			"",
-			""
-		])
-		
-		countLibres -= 1
-		countOcupados += 1
+			semEspacios.acquire()
 
-		outTable.append([
-			timestamp,
-			"",
-			"El auto termina de pasar por E" + self.id,
-			countLibres,
-			countOcupados
-		])
-		
-		time.sleep(5)
-		
-		outTable.append([
-			timestamp + 5,
-			"",
-			"Se bajo la barrera E" + self.id,
-			"",
-			""
-		])
+			global countLibres
+			global countOcupados
+			
+			countLibres -= 1
+			countOcupados += 1
 
-		self.mutex.release()
-		semOcupados.release()
+			outTable.append([
+				timestamp,
+				"",
+				"El auto termina de pasar por E" + self.id,
+				countLibres,
+				countOcupados
+			])
+
+			semEspacios.release()
+			
+			time.sleep(5)
+			
+			outTable.append([
+				timestamp + 5,
+				"",
+				"Se bajo la barrera E" + self.id,
+				"",
+				""
+			])
+			self.estado = 'inicio'
+		else:
+			print("Llamada a laserOnE antes de laserOffE en Entrada", self.id)
 
 class Salida:
 	def __init__(self, id):
-		self.mutex = threading.Semaphore(1)
 		self.id = id
+		self.estado = 'inicio'
 		self.requestQueue = queue.Queue(100)
 
 	def serveRequests(self):
 		while True:
 			msg = self.requestQueue.get()
+			
 			if msg is None:
 				break
+
 			tokens = msg.split()
 			timestamp = float(tokens[0])
+			
 			if tokens[1] == 'meteTarjeta':
 				if tokens[3] == '1':
 					self.meteTarjeta(timestamp, int(tokens[3]), float(tokens[4]))
@@ -176,121 +203,141 @@ class Salida:
 				self.laserOnS(timestamp)
 			elif tokens[1] == 'laserOffS':
 				self.laserOffS(timestamp)
+			
 			self.requestQueue.task_done()
 
 	def meteTarjeta(self, timestamp, pago = None, timestampPago = None):
 		# checar que haya pagado para hacer el acquire
-		if (pago == 1):
-			outTable.append([
-				timestamp,
-				"meteTarjeta " + self.id + " " + str(pago) + " " + str(timestampPago),
-				"",
-				"",
-				""
-			])
-			if (timestamp - timestampPago < 15):
-				semOcupados.acquire()
-				self.mutex.acquire()
+		if self.estado == 'inicio':
+			semEspacios.acquire()
 
-				outTable.append([
-					timestamp,
-					"",
-					"Se empieza a levantar la barrera de S" + self.id,
-					"",
-					""
-				])
+			if countOcupados > 0:
+				if pago == 1:
+					outTable.append([
+						timestamp,
+						"meteTarjeta " + self.id + " " + str(pago) + " " + str(timestampPago),
+						"",
+						"",
+						""
+					])
+					if (timestamp - timestampPago < 15):
+						outTable.append([
+							timestamp,
+							"",
+							"Se empieza a levantar la barrera de S" + self.id,
+							"",
+							""
+						])
 
-				time.sleep(5)
+						time.sleep(5)
 
-				outTable.append([
-					timestamp + 5,
-					"",
-					"Se levantó la barrera de S" + self.id,
-					"",
-					""
-				])
+						outTable.append([
+							timestamp + 5,
+							"",
+							"Se levantó la barrera de S" + self.id,
+							"",
+							""
+						])
+						self.estado = "metido"
+					else:
+						outTable.append([
+							timestamp,
+							"",
+							"Pago realizado hace 15 segundos o mas. Vuelva a intentar",
+							"",
+							""
+						])
+						self.estado = 'inicio'
+				else:
+					outTable.append([
+						timestamp,
+						"meteTarjeta " + self.id,
+						"",
+						"",
+						""
+					])
+					outTable.append([
+						timestamp,
+						"",
+						"No se ha realizado el pago.",
+						"",
+						""
+					])
+					self.estado = 'inicio'
 			else:
-				outTable.append([
-					timestamp,
-					"",
-					"Pago realizado hace 15 segundos o mas. Vuelva a intentar",
-					"",
-					""
-				])
+				print("No pueden salir autos sin que haya espacios ocupados.")
+			semEspacios.release()
 		else:
-			outTable.append([
-				timestamp,
-				"meteTarjeta " + self.id,
-				"",
-				"",
-				""
-			])
-			outTable.append([
-					timestamp,
-					"",
-					"No se ha realizado el pago.",
-					"",
-					""
-				])
+			print("Llamada a meteTarjeta antes de Inicio en Salida", self.id)
 
 	def laserOffS(self, timestamp): #El auto comienza a pasar por la salida
-		outTable.append([
-			timestamp,
-			"laserOffS " + self.id,
-			"",
-			"",
-			""
-		])
-		outTable.append([
-			timestamp,
-			"",
-			"El auto comienza a salir por S" + self.id,
-			"",
-			""
-		])
+		if self.estado == 'metido':
+			outTable.append([
+				timestamp,
+				"laserOffS " + self.id,
+				"",
+				"",
+				""
+			])
+			outTable.append([
+				timestamp,
+				"",
+				"El auto comienza a salir por S" + self.id,
+				"",
+				""
+			])
+			self.estado = "apagado"
+		else:
+			print("Llamada a laserOffS antes de meteTarjera en Salida", self.id)
 
 	def laserOnS(self, timestamp): #El auto libera un lugar y sale del estacionamiento
-		global countLibres
-		global countOcupados
+		if self.estado == "apagado":
+			outTable.append([
+				timestamp,
+				"laserOnS " + self.id,
+				"",
+				"",
+				""
+			])
 
-		outTable.append([
-			timestamp,
-			"laserOnS " + self.id,
-			"",
-			"",
-			""
-		])
+			semEspacios.acquire()
 
-		countLibres += 1
-		countOcupados -= 1
+			global countLibres
+			global countOcupados
 
-		outTable.append([
-			timestamp,
-			"",
-			"El auto termina de pasar por S" + self.id,
-			countLibres,
-			countOcupados
-		])
+			countLibres += 1
+			countOcupados -= 1
 
-		time.sleep(5)
-		
-		outTable.append([
-			timestamp + 5,
-			"",
-			"Se bajo la barrera S" + self.id,
-			"",
-			""
-		])
+			outTable.append([
+				timestamp,
+				"",
+				"El auto termina de pasar por S" + self.id,
+				countLibres,
+				countOcupados
+			])
 
-		self.mutex.release()
-		semEspacios.release()
+			semEspacios.release()
+
+			time.sleep(5)
+			
+			outTable.append([
+				timestamp + 5,
+				"",
+				"Se bajo la barrera S" + self.id,
+				"",
+				""
+			])
+			self.estado = "inicio"
+		else:
+			print("Llamada a laserOnS antes de laserOffS en Salida", self.id)
 
 class Estacionamiento:
 	def __init__(self, timestamp, numEspacios, numEntradas, numSalidas):
+
+		semEspacios.acquire()
+
 		global countLibres
 		global countOcupados
-		global semEspacios
-		global semOcupados
 
 		countLibres = int(numEspacios)
 		countOcupados = 0
@@ -302,12 +349,11 @@ class Estacionamiento:
 			countLibres,
 			countOcupados
 		])
+
+		semEspacios.release()
+
 		self.crearEntradas(int(numEntradas))
 		self.crearSalidas(int(numSalidas))
-
-		#Se crean los semaforos y se inicializan con los valores establecidos
-		semEspacios = threading.Semaphore(int(numEspacios)) # Inicializado en numEspacios lo cual es la cantidad dada en apertura, productor
-		semOcupados = threading.Semaphore(0) # Inicializado en 0, consumidor
 
 	def serveRequests(self, msg):
 		tokens = msg.split()
